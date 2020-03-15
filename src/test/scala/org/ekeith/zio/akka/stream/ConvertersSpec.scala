@@ -2,9 +2,9 @@ package org.ekeith.zio.akka.stream
 
 import akka.actor.ActorSystem
 import akka.stream.Materializer
-import akka.stream.scaladsl.{ Keep, RunnableGraph, Sink, Source }
+import akka.stream.scaladsl.{ Keep, RunnableGraph, Sink, Source => AkkaSource }
 import zio.Task
-import zio.test.{ assert, suite, testM, DefaultRunnableSpec, ZSpec }
+import zio.test.{ assert, suite, testM, DefaultRunnableSpec, Spec, TestFailure, TestSuccess, ZSpec }
 import zio.test.Assertion.equalTo
 import zio.test.environment.TestEnvironment
 
@@ -12,14 +12,14 @@ import scala.concurrent.Future
 
 object ConvertersSpec extends DefaultRunnableSpec {
 
+  def spec: ZSpec[TestEnvironment, Any] = suite("All Tests")(GraphConverterSuite, SourceConverterSuite)
   import Converters._
 
-  // RunnableGraph for testing
-  val sink: Sink[Int, Future[Int]]         = Sink.fold[Int, Int](0)(_ + _)
-  val runnable: RunnableGraph[Future[Int]] = Source(1 to 10).toMat(sink)(Keep.right)
-
-  def spec: ZSpec[TestEnvironment, Any] = suite("ConvertersSpec")(
+  val GraphConverterSuite: Spec[Any, TestFailure[Throwable], TestSuccess] = suite("GraphConvertersSpec")(
     testM("Converted graph that sums a list of integers materialises the correct result") {
+      val sink: Sink[Int, Future[Int]]         = Sink.fold[Int, Int](0)(_ + _)
+      val runnable: RunnableGraph[Future[Int]] = AkkaSource(1 to 10).toMat(sink)(Keep.right)
+
       for {
         actorSystem <- Task(ActorSystem("Test"))
         mat         <- Task(Materializer(actorSystem))
@@ -28,6 +28,9 @@ object ConvertersSpec extends DefaultRunnableSpec {
       } yield assert(output)(equalTo(55))
     },
     testM("graph can be converted and evaluated independently twice with correct result both times") {
+      val sink: Sink[Int, Future[Int]]         = Sink.fold[Int, Int](0)(_ + _)
+      val runnable: RunnableGraph[Future[Int]] = AkkaSource(1 to 10).toMat(sink)(Keep.right)
+
       for {
         actorSystem <- Task(ActorSystem("Test"))
         mat         <- Task(Materializer(actorSystem))
@@ -54,7 +57,7 @@ object ConvertersSpec extends DefaultRunnableSpec {
 
       // graph that updates the mutable map and returns the last key value updated
       val sideEffectGraph: RunnableGraph[Future[Int]] =
-        Source(List(1, 2, 3))
+        AkkaSource(List(1, 2, 3))
           .map(updateState(_, effectState))
           .toMat(Sink.last)(Keep.right)
 
@@ -66,6 +69,31 @@ object ConvertersSpec extends DefaultRunnableSpec {
         _           <- Task(actorSystem.terminate())
       } yield assert(output)(equalTo(3)) &&
         assert(effectState)(equalTo(targetMap))
+    }
+  )
+
+  val SourceConverterSuite: Spec[Any, TestFailure[Throwable], TestSuccess] = suite("SourceConvertersSpec")(
+    testM("Converted Akka source can be properly folded over as a ZIO Stream") {
+      for {
+        actorSystem <- Task(ActorSystem("Test"))
+        testSource  <- Task(AkkaSource(1 to 10))
+        mat         <- Task(Materializer(actorSystem))
+        zioStream   = akkaSourceAsZioStream(testSource).provide(mat)
+        output      <- zioStream.fold(0)(_ + _)
+        _           <- Task(actorSystem.terminate())
+      } yield assert(output)(equalTo(55))
+    },
+    testM("Converted Akka source should be able to be evaluated as a ZStream multiple times") {
+      for {
+        actorSystem <- Task(ActorSystem("Test"))
+        testSource  <- Task(AkkaSource(1 to 10))
+        mat         <- Task(Materializer(actorSystem))
+        zioStream   = akkaSourceAsZioStream(testSource).provide(mat)
+        output1     <- zioStream.fold(0)(_ + _)
+        output2     <- zioStream.fold(10)(_ + _)
+        output      = (output1, output2)
+        _           <- Task(actorSystem.terminate())
+      } yield assert(output)(equalTo((55, 65)))
     }
   )
 }
