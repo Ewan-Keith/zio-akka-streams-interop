@@ -10,18 +10,24 @@ import scala.concurrent.Future
 object Converters {
 
   /**
-   * Convert a RunnableGraph to a ZIO Task.
+   * Convert a RunnableGraph, that materialises a Future value, to a ZIO Task returning a materialised value.
+   *
+   * This converter only supports graphs that materialise a value within a Future. The reason for this is that if no
+   * value is materialised (e.g. that return the Akka Streams NotUsed value directly outside of a Future) there is
+   * no mechanism to monitor stream completion (successful or not). This could result in streams that throw an
+   * exception, but that do not raise this exception to ZIO. This is considered an anti-pattern and so is not
+   * supported.
    *
    * @param graph An Akka Streams RunnableGraph.
    *
-   * @tparam M The type of the materialized value returned when the graph completes running.
+   * @tparam M The type of the materialized value returned within a Future when the graph completes running.
    * @return A ZIO Task, dependent on an Akka Streams Materializer that runs the provided graph.
    */
   def runnableGraphAsTask[M](graph: RunnableGraph[Future[M]]): ZIO[Materializer, Throwable, M] =
     for {
       mat                <- ZIO.environment[Materializer]
       materialisedFuture <- Task(graph.run()(mat))
-      materialisedValue  <- ZIO.fromFuture(implicit ec => materialisedFuture)
+      materialisedValue  <- ZIO.fromFuture(_ => materialisedFuture)
     } yield materialisedValue
 
   /**
@@ -42,6 +48,21 @@ object Converters {
       )
       .flatMap(queueToZStream)
 
+  def akkaSourceAsZioStreamM[A, M](source: Graph[SourceShape[A], M]): (ZStream[Materializer, Throwable, A], Task[M]) =
+    ???
+
+  private def extractQueueFromSourceMat[A, M](
+    source: Graph[SourceShape[A], M],
+    mat: Materializer
+  ): Task[(SinkQueueWithCancel[A], M)] =
+    ZIO.effect(
+      AkkaSource
+        .fromGraph(source)
+        .toMat(AkkaSink.queue[A]())(Keep.both)
+        .run()(mat)
+        .swap
+    )
+
   private def extractQueueFromSource[A](
     source: Graph[SourceShape[A], _],
     mat: Materializer
@@ -55,7 +76,7 @@ object Converters {
 
   private def queueToZStream[A](queue: SinkQueueWithCancel[A]): ZStream[Any, Throwable, A] =
     ZStream
-      .repeatEffect(ZIO.fromFuture(implicit ec => queue.pull()))
+      .repeatEffect(ZIO.fromFuture(_ => queue.pull()))
       .collectWhile({ case Some(x) => x })
 
 }
