@@ -26,7 +26,7 @@ object Converters {
   def runnableGraphAsTask[M](graph: RunnableGraph[Future[M]]): ZIO[Materializer, Throwable, M] =
     for {
       mat                <- ZIO.environment[Materializer]
-      materialisedFuture <- Task(graph.run()(mat))
+      materialisedFuture <- ZIO.effect(graph.run()(mat))
       materialisedValue  <- ZIO.fromFuture(_ => materialisedFuture)
     } yield materialisedValue
 
@@ -47,21 +47,6 @@ object Converters {
         } yield sinkQueue
       )
       .flatMap(queueToZStream)
-
-  def akkaSourceAsZioStreamM[A, M](source: Graph[SourceShape[A], M]): (ZStream[Materializer, Throwable, A], Task[M]) =
-    ???
-
-  private def extractQueueFromSourceMat[A, M](
-    source: Graph[SourceShape[A], M],
-    mat: Materializer
-  ): Task[(SinkQueueWithCancel[A], M)] =
-    ZIO.effect(
-      AkkaSource
-        .fromGraph(source)
-        .toMat(AkkaSink.queue[A]())(Keep.both)
-        .run()(mat)
-        .swap
-    )
 
   private def extractQueueFromSource[A](
     source: Graph[SourceShape[A], _],

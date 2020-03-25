@@ -84,6 +84,31 @@ object ConvertersSpec extends DefaultRunnableSpec {
         _           <- Task(actorSystem.terminate())
       } yield assert(output)(equalTo(3)) &&
         assert(effectState)(equalTo(targetState))
+    },
+    testM("A converted graph  with side effects should not evaluate any effects past a thrown exception") {
+      import scala.collection.mutable.{ Map => MMap }
+
+      val targetState = MMap(-5 -> "record for key -5")
+
+      val effectState = MMap[Int, String]()
+      val updateState: (Int, MMap[Int, String]) => Int =
+        (key: Int, state: MMap[Int, String]) => { state += (key -> s"record for key $key"); key }
+
+      val sideEffectingGraph: RunnableGraph[Future[Int]] =
+        AkkaSource(-1 to 1)
+          .map(5 / _)
+          .map(updateState(_, effectState))
+          .toMat(Sink.last)(Keep.right)
+
+      for {
+        actorSystem <- Task(ActorSystem("Test"))
+        mat         <- Task(Materializer(actorSystem))
+        output      <- runnableGraphAsTask(sideEffectingGraph).either.provide(mat)
+        _           <- Task(actorSystem.terminate())
+      } yield assert(output)(
+        isSubtype[Either[ArithmeticException, Int]](anything) &&
+          isLeft(hasMessage(equalTo("/ by zero")))
+      ) && assert(effectState)(equalTo(targetState))
     }
   )
 
@@ -149,6 +174,61 @@ object ConvertersSpec extends DefaultRunnableSpec {
         _           <- Task(actorSystem.terminate())
       } yield assert(output)(equalTo(6)) &&
         assert(effectState)(equalTo(targetState))
+    },
+    testM("A converted source with side effects should not evaluate any effects past a thrown exception") {
+      import scala.collection.mutable.{ Map => MMap }
+
+      val targetState = MMap(-5 -> "record for key -5")
+
+      val effectState = MMap[Int, String]()
+      val updateState: (Int, MMap[Int, String]) => Int =
+        (key: Int, state: MMap[Int, String]) => { state += (key -> s"record for key $key"); key }
+
+      val sideEffectingSource: AkkaSource[Int, NotUsed] =
+        AkkaSource(-1 to 1)
+          .map(5 / _)
+          .map(updateState(_, effectState))
+
+      for {
+        actorSystem <- Task(ActorSystem("Test"))
+        mat         <- Task(Materializer(actorSystem))
+        zioStream   = akkaSourceAsZioStream(sideEffectingSource).provide(mat)
+        output      <- zioStream.fold(0)(_ + _).either
+        _           <- Task(actorSystem.terminate())
+      } yield assert(output)(
+        isSubtype[Either[ArithmeticException, Int]](anything) &&
+          isLeft(hasMessage(equalTo("/ by zero")))
+      ) && assert(effectState)(equalTo(targetState))
+    },
+    testM("A converted source doesn't evaluate its side effects if the ZStream is not completed (e.g. folded over)") {
+      import scala.collection.mutable.{ Map => MMap }
+
+      val targetState = MMap(
+        2 -> "record for key 2",
+        4 -> "record for key 4",
+        6 -> "record for key 6"
+      )
+
+      val effectState = MMap[Int, String]()
+      val updateState: (Int, MMap[Int, String]) => Int =
+        (key: Int, state: MMap[Int, String]) => { state += (key -> s"record for key $key"); key }
+
+      val sideEffectingSource1 =
+        AkkaSource(List(1, 2, 3))
+          .map(updateState(_, effectState))
+
+      val sideEffectingSource2 =
+        AkkaSource(List(2, 4, 6))
+          .map(updateState(_, effectState))
+
+      for {
+        actorSystem <- Task(ActorSystem("Test"))
+        mat         <- Task(Materializer(actorSystem))
+        _           = akkaSourceAsZioStream(sideEffectingSource1).provide(mat)
+        zioStream2  = akkaSourceAsZioStream(sideEffectingSource2).provide(mat)
+        _           <- zioStream2.fold(0)(_ + _)
+        _           <- Task(actorSystem.terminate())
+      } yield assert(effectState)(equalTo(targetState))
     }
   )
 }
