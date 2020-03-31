@@ -10,14 +10,14 @@ import akka.stream.scaladsl.{
   Source => AkkaSource
 }
 import zio.stream.{ ZSink, ZStream }
-import zio.{ Chunk, Promise, Task, UIO, ZIO }
+import zio.{ Chunk, Has, Promise, Task, UIO, ZIO }
 
 import scala.concurrent.Future
 
 object Converters {
 
   /**
-   * Convert a RunnableGraph, that materialises a Future value, to a ZIO Task returning a materialised value.
+   * Convert a RunnableGraph, that materialises a Future value, to a ZIO effect returning a materialised value.
    *
    * This converter only supports graphs that materialise a value within a Future. The reason for this is that if no
    * value is materialised (e.g. that return the Akka Streams NotUsed value directly outside of a Future) there is
@@ -31,9 +31,9 @@ object Converters {
    *
    * @return A ZIO Task, dependent on an Akka Streams Materializer that runs the provided graph.
    */
-  def runnableGraphAsTask[M](graph: RunnableGraph[Future[M]]): ZIO[Materializer, Throwable, M] =
+  def runnableGraphAsZioEffect[M](graph: RunnableGraph[Future[M]]): ZIO[Has[Materializer], Throwable, M] =
     for {
-      mat                <- ZIO.environment[Materializer]
+      mat                <- ZIO.access[Has[Materializer]](_.get)
       materialisedFuture <- ZIO.effect(graph.run()(mat))
       materialisedValue  <- ZIO.fromFuture(_ => materialisedFuture)
     } yield materialisedValue
@@ -51,7 +51,7 @@ object Converters {
    *
    * @return A ZStream, outputting the values of the provided Akka Stream Source.
    */
-  def akkaSourceAsZioStream[A](source: Graph[SourceShape[A], _]): UIO[ZStream[Materializer, Throwable, A]] =
+  def akkaSourceAsZioStream[A](source: Graph[SourceShape[A], _]): UIO[ZStream[Has[Materializer], Throwable, A]] =
     akkaSourceAsZioStreamMat(source).map(_._1)
 
   /**
@@ -67,13 +67,13 @@ object Converters {
    */
   def akkaSourceAsZioStreamMat[A, M](
     source: Graph[SourceShape[A], M]
-  ): UIO[(ZStream[Materializer, Throwable, A], Task[M])] =
+  ): UIO[(ZStream[Has[Materializer], Throwable, A], Task[M])] =
     for {
       p <- Promise.make[Throwable, M]
       zs = ZStream
         .fromEffect(
           for {
-            mat            <- ZIO.environment[Materializer]
+            mat            <- ZIO.access[Has[Materializer]](_.get)
             (sinkQueue, m) <- extractQueueFromSourceM(source, mat)
             _              <- p.succeed(m)
           } yield sinkQueue
@@ -93,7 +93,7 @@ object Converters {
    *
    * @return A ZSink, ready to consume values and feed them to the provided Akka Streams Sink.
    */
-  def akkaSinkAsZioSink[A](sink: Graph[SinkShape[A], _]): UIO[ZSink[Materializer, Throwable, Nothing, A, Unit]] =
+  def akkaSinkAsZioSink[A](sink: Graph[SinkShape[A], _]): UIO[ZSink[Has[Materializer], Throwable, Nothing, A, Unit]] =
     for {
       zSink <- akkaSinkAsZioSinkMat(sink)
     } yield zSink.map(_ => ())
@@ -108,21 +108,23 @@ object Converters {
    *
    * @return A ZSink, ready to consume values and feed them to the provided Akka Streams Sink.
    */
-  def akkaSinkAsZioSinkMat[A, M](sink: Graph[SinkShape[A], M]): UIO[ZSink[Materializer, Throwable, Nothing, A, M]] =
+  def akkaSinkAsZioSinkMat[A, M](
+    sink: Graph[SinkShape[A], M]
+  ): UIO[ZSink[Has[Materializer], Throwable, Nothing, A, M]] =
     UIO(
-      new ZSink[Materializer, Throwable, Nothing, A, M] {
+      new ZSink[Has[Materializer], Throwable, Nothing, A, M] {
 
         type State = (SourceQueueWithComplete[A], Promise[Throwable, M])
 
-        val initial: ZIO[Materializer, Throwable, State] =
+        val initial: ZIO[Has[Materializer], Throwable, State] =
           for {
             p                <- Promise.make[Throwable, M]
-            mat              <- ZIO.environment[Materializer]
+            mat              <- ZIO.access[Has[Materializer]](_.get)
             (sourceQueue, m) <- extractQueueFromSinkM(sink, mat)
             _                <- p.succeed(m)
           } yield (sourceQueue, p)
 
-        def step(state: State, a: A): ZIO[Materializer, Throwable, State] =
+        def step(state: State, a: A): ZIO[Has[Materializer], Throwable, State] =
           ZIO
             .fromFuture(_ => state._1.offer(a))
             .flatMap({
@@ -134,7 +136,7 @@ object Converters {
 
         def cont(state: State): Boolean = true
 
-        def extract(state: State): ZIO[Materializer, Throwable, (M, Chunk[Nothing])] =
+        def extract(state: State): ZIO[Has[Materializer], Throwable, (M, Chunk[Nothing])] =
           state._2.await.map((_, Chunk.empty))
       }
     )
