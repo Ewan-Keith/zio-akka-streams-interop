@@ -1,4 +1,4 @@
-package org.ekeith.zio.akka.stream
+package com.github.ekeith.zio.akkastream
 
 import akka.{ Done, NotUsed }
 import akka.actor.ActorSystem

@@ -6,7 +6,7 @@ lazy val allScala  = Seq(scala211, scala212, mainScala)
 
 lazy val zioVersion = "1.0.0-RC18-2"
 
-organization := "org.ekeith"
+organization := "com.github.ekeith"
 homepage := Some(url("https://github.com/Ewan-Keith/zio-akka-streams-interop"))
 name := "zio-akka-streams-interop"
 licenses := List("Apache-2.0" -> url("http://www.apache.org/licenses/LICENSE-2.0"))
@@ -21,7 +21,7 @@ developers := List(
   Developer(
     "ekeith",
     "Ewan Keith",
-    "keith.ewan@yahoo.co.uk",
+    "ewan.keith100@gmail.com",
     url("https://github.com/ewan-keith")
   )
 )
