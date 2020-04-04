@@ -18,7 +18,10 @@ pgpSecretRing := file("/tmp/secret.asc")
 releaseEarlyWith := SonatypePublisher
 
 scmInfo := Some(
-  ScmInfo(url("https://github.com/Ewan-Keith/zio-akka-streams-interop"), "scm:git:git@github.com:Ewan-Keith/zio-akka-streams-interop.git")
+  ScmInfo(
+    url("https://github.com/Ewan-Keith/zio-akka-streams-interop"),
+    "scm:git:git@github.com:Ewan-Keith/zio-akka-streams-interop.git"
+  )
 )
 
 developers := List(
