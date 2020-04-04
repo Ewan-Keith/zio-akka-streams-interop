@@ -150,4 +150,6 @@ for {
 // (MMap(1 -> "record for key 1", 2 -> "record for key 2", 3 -> "record for key 3"), Done)
 ```
 
+## Shout-out
+
 When putting this library together I've used the great [zio-akka-cluster](https://github.com/zio/zio-akka-cluster) library as a template for documentation, CI and deployment.
