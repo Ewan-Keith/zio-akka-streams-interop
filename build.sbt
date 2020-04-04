@@ -6,7 +6,7 @@ lazy val allScala  = Seq(scala211, scala212, mainScala)
 
 lazy val zioVersion = "1.0.0-RC18-2"
 
-organization := "com.github.ekeith"
+organization := "com.github.ewan-keith"
 homepage := Some(url("https://github.com/Ewan-Keith/zio-akka-streams-interop"))
 name := "zio-akka-streams-interop"
 licenses := List("Apache-2.0" -> url("http://www.apache.org/licenses/LICENSE-2.0"))
@@ -16,6 +16,10 @@ fork in Test := true
 pgpPublicRing := file("/tmp/public.asc")
 pgpSecretRing := file("/tmp/secret.asc")
 releaseEarlyWith := SonatypePublisher
+
+scmInfo := Some(
+  ScmInfo(url("https://github.com/Ewan-Keith/zio-akka-streams-interop"), "scm:git:git@github.com:Ewan-Keith/zio-akka-streams-interop.git")
+)
 
 developers := List(
   Developer(
