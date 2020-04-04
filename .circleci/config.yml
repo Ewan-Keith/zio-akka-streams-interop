@@ -92,8 +92,8 @@ jobs:
       - run: git fetch --tags
       - restore_cache:
           key: sbt-cache
-      - run: echo -n "${PGP_PUBLIC}" | base64 -d > /tmp/public.asc
-      - run: echo -n "${PGP_SECRET}" | base64 -d > /tmp/secret.asc
+      - run: echo -n "${PGP_PUBLIC}" | base64 -di > /tmp/public.asc
+      - run: echo -n "${PGP_SECRET}" | base64 -di > /tmp/secret.asc
       - run: sbt ++2.12.10! releaseEarly
       - run: sbt ++2.13.1! releaseEarly
 
