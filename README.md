@@ -1,6 +1,6 @@
 # ZIO Wrappers for Akka Streams
 
-[![CircleC](https://circleci.com/gh/ewan-keith/zio-akka-streams-interop/zio-akka-streams-interop.svg?style=svg)](https://circleci.com/gh/ewan-keith/zio-akka-streams-interop)
+[![CircleCI](https://circleci.com/gh/Ewan-Keith/zio-akka-streams-interop/tree/master.svg?style=svg)](https://circleci.com/gh/Ewan-Keith/zio-akka-streams-interop/tree/master)
 
 This library is a [ZIO](https://github.com/zio/zio) wrapper for [Akka Streams](https://doc.akka.io/docs/akka/current/stream/index.html).
 It provides helper methods for describing basic Akka Streams stages/graphs as ZIO effects.
